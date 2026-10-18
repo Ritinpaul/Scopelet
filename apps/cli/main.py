@@ -602,6 +602,49 @@ def scan_command(
         console.print(f"\n[bold green][OK] Privacy scan passed with no critical leaks detected.[/bold green]")
 
 
+@app.command(name="sanitize")
+def sanitize_command(
+    target: Path = typer.Argument(..., help="Path to workspace directory to sanitize"),
+    command: str = typer.Option(..., "--command", "-c", help="Test command reproducing the failure"),
+    fingerprint: str = typer.Option(..., "--fingerprint", "-f", help="Expected failure fingerprint to preserve"),
+    canary: Optional[list[str]] = typer.Option(None, "--canary", "-k", help="Custom canary token string to anonymize"),
+) -> None:
+    """
+    Sanitizes sensitive identifiers and canaries while verifying failure reproducibility after every change.
+    """
+    from scopelet.privacy.sanitizer import BehaviorPreservingSanitizer
+
+    target_path = target.resolve()
+    console.print("[bold blue]Scopelet Behavior-Preserving Sanitizer[/bold blue]")
+    console.print(f"[dim]Target Workspace:[/dim] [yellow]{target_path}[/yellow]")
+    console.print(f"[dim]Expected Fingerprint:[/dim] [cyan]{fingerprint[:16]}...[/cyan]\n")
+
+    canary_set = set(canary) if canary else set()
+    sanitizer = BehaviorPreservingSanitizer(
+        workspace_dir=target_path,
+        command=command,
+        expected_fingerprint=fingerprint,
+    )
+
+    with console.status("[bold cyan]Discovering and sanitizing sensitive identifiers...[/bold cyan]"):
+        mapping_store = sanitizer.auto_sanitize(canaries=canary_set)
+
+    if mapping_store.mapping:
+        table = Table(title="Sanitized Identifier Mappings", show_header=True, header_style="bold green")
+        table.add_column("Original Identifier", style="yellow")
+        table.add_column("Sanitized Pseudonym", style="bold cyan")
+
+        for orig, pseudo in mapping_store.mapping.items():
+            table.add_row(orig, pseudo)
+
+        console.print(table)
+        console.print(f"\n[bold green][SUCCESS] Sanitized {len(mapping_store.mapping)} sensitive identifier(s).[/bold green]")
+        console.print(f"[dim]Private mapping saved to:[/dim] [yellow]{sanitizer.workspace_dir / '.scopelet' / 'private' / 'mapping.json'}[/yellow]")
+    else:
+        console.print("[dim]No sensitive identifiers required transformation.[/dim]")
+
+
 if __name__ == "__main__":
     app()
+
 
