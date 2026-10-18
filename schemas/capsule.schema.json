@@ -1,0 +1,110 @@
+{
+  "$defs": {
+    "CapsuleFile": {
+      "description": "Metadata record for a file bundled inside a capsule.",
+      "properties": {
+        "path": {
+          "description": "Normalized relative POSIX path of the file",
+          "title": "Path",
+          "type": "string"
+        },
+        "hash": {
+          "description": "SHA-256 content hash of the file",
+          "title": "Hash",
+          "type": "string"
+        },
+        "size_bytes": {
+          "default": 0,
+          "description": "Size of the file in bytes",
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "hash"
+      ],
+      "title": "CapsuleFile",
+      "type": "object"
+    }
+  },
+  "description": "Manifest metadata for an independent Scopelet reproduction capsule.",
+  "properties": {
+    "schema_version": {
+      "default": "1.0",
+      "description": "Schema version",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "capsule_hash": {
+      "default": "",
+      "description": "Deterministic SHA-256 hash of the entire capsule",
+      "title": "Capsule Hash",
+      "type": "string"
+    },
+    "title": {
+      "description": "Human-readable title describing the defect",
+      "title": "Title",
+      "type": "string"
+    },
+    "created_at": {
+      "description": "UTC ISO timestamp of capsule creation",
+      "title": "Created At",
+      "type": "string"
+    },
+    "runtime": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Runtime engine specifications",
+      "title": "Runtime",
+      "type": "object"
+    },
+    "command": {
+      "default": "npm test",
+      "description": "Verification test command",
+      "title": "Command",
+      "type": "string"
+    },
+    "allowed_changes": {
+      "description": "List of files permitted to be modified in a fix",
+      "items": {
+        "type": "string"
+      },
+      "title": "Allowed Changes",
+      "type": "array"
+    },
+    "expected": {
+      "additionalProperties": true,
+      "description": "Expected outcome when bug is fixed",
+      "title": "Expected",
+      "type": "object"
+    },
+    "network_allowed": {
+      "default": false,
+      "description": "Whether network access is permitted during verification",
+      "title": "Network Allowed",
+      "type": "boolean"
+    },
+    "failure_fingerprint": {
+      "default": "",
+      "description": "Target oracle failure fingerprint of the unpatched bug",
+      "title": "Failure Fingerprint",
+      "type": "string"
+    },
+    "files": {
+      "description": "List of regular files included in the capsule",
+      "items": {
+        "$ref": "#/$defs/CapsuleFile"
+      },
+      "title": "Files",
+      "type": "array"
+    }
+  },
+  "required": [
+    "title",
+    "created_at"
+  ],
+  "title": "CapsuleManifest",
+  "type": "object"
+}

@@ -409,6 +409,143 @@ def reduce_command(
             pass
 
 
+capsule_app = typer.Typer(
+    name="capsule",
+    help="Build and execute independent reproduction capsules.",
+)
+app.add_typer(capsule_app, name="capsule")
+
+
+@capsule_app.command(name="build")
+def capsule_build_command(
+    source_dir: Optional[Path] = typer.Option(None, "--source-dir", "-s", help="Directory with reduced candidate files"),
+    title: Optional[str] = typer.Option(None, "--title", "-t", help="Title describing the failure defect"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output .scopelet archive file path"),
+    cmd: Optional[str] = typer.Option(None, "--cmd", "-c", help="Verification test command"),
+    fingerprint: Optional[str] = typer.Option(None, "--fingerprint", "-f", help="Failure fingerprint"),
+    allowed: Optional[list[str]] = typer.Option(None, "--allow", "-a", help="Allowed files for bugfix modification"),
+) -> None:
+    """
+    Assembles a minimal reproduction capsule directory and packs it into a .scopelet archive.
+    """
+    import json
+    import tempfile
+    from scopelet.capsule import CapsuleBuilder, CapsulePackager
+    from scopelet.reducer import CandidateState
+
+    base_dir = (source_dir or Path(".scopelet/reduced")).resolve()
+    if not base_dir.exists():
+        base_dir = Path.cwd().resolve()
+
+    # Detect metadata from .scopelet if available
+    detected_title = title or "Deterministic Test Failure"
+    detected_cmd = cmd or "npm test"
+    detected_fp = fingerprint or ""
+
+    session_json = base_dir / ".scopelet" / "session.json"
+    if not session_json.exists():
+        session_json = Path.cwd() / ".scopelet" / "session.json"
+    if session_json.exists():
+        try:
+            s_data = json.loads(session_json.read_text(encoding="utf-8"))
+            if not cmd and "command" in s_data:
+                detected_cmd = s_data["command"]
+            if not title and "failure" in s_data and "test" in s_data["failure"]:
+                detected_title = s_data["failure"]["test"]
+            if not fingerprint and "failure" in s_data and "fingerprint" in s_data["failure"]:
+                detected_fp = s_data["failure"]["fingerprint"]
+        except Exception:
+            pass
+
+    console.print("[bold blue]Scopelet Independent Capsule Builder[/bold blue]")
+    console.print(f"[dim]Source Directory:[/dim] [yellow]{base_dir}[/yellow]")
+    console.print(f"[dim]Title:[/dim] [bold]{detected_title}[/bold]")
+    console.print(f"[dim]Command:[/dim] [cyan]{detected_cmd}[/cyan]\n")
+
+    state = CandidateState.from_directory(base_dir)
+    staging_dir = Path(tempfile.mkdtemp(prefix="scopelet_capsule_build_"))
+
+    builder = CapsuleBuilder()
+    manifest = builder.build(
+        output_dir=staging_dir,
+        state=state,
+        title=detected_title,
+        command=detected_cmd,
+        failure_fingerprint=detected_fp,
+        allowed_changes=allowed,
+    )
+
+    archive_target = (output or Path(f"{staging_dir.name}.scopelet")).resolve()
+    CapsulePackager.pack(staging_dir, archive_target)
+
+    # Clean staging files
+    import shutil
+    shutil.rmtree(staging_dir, ignore_errors=True)
+
+    table = Table(title="Built Capsule Summary", show_header=True, header_style="bold green")
+    table.add_column("Property", style="dim", width=22)
+    table.add_column("Value", style="bold")
+
+    table.add_row("Archive File", str(archive_target))
+    table.add_row("Capsule Hash", f"[bold cyan]{manifest.capsule_hash}[/bold cyan]")
+    table.add_row("Bundled Files", str(len(manifest.files)))
+    table.add_row("Allowed Changes", str(len(manifest.allowed_changes)))
+    if manifest.failure_fingerprint:
+        table.add_row("Failure Fingerprint", manifest.failure_fingerprint[:16] + "...")
+
+    console.print(table)
+    console.print(f"\n[bold green][OK] Capsule successfully built:[/bold green] [cyan]{archive_target}[/cyan]")
+
+
+@capsule_app.command(name="run")
+def capsule_run_command(
+    target: Path = typer.Argument(..., help="Path to .scopelet archive or extracted capsule directory"),
+    dep_dir: Optional[Path] = typer.Option(None, "--dep-dir", "-d", help="Directory containing pre-installed node_modules"),
+    timeout: int = typer.Option(60, "--timeout", "-t", help="Timeout in seconds"),
+) -> None:
+    """
+    Executes a .scopelet capsule under isolated execution without original repository access.
+    """
+    from scopelet.capsule import CapsuleRunner
+
+    target_path = target.resolve()
+    console.print(f"[bold blue]Scopelet Capsule Standalone Runner[/bold blue]")
+    console.print(f"[dim]Target:[/dim] [yellow]{target_path}[/yellow]\n")
+
+    runner = CapsuleRunner()
+    try:
+        manifest, result = runner.run(
+            capsule_target=target_path,
+            dependency_dir=dep_dir,
+            timeout=timeout,
+        )
+    except Exception as e:
+        console.print(f"[bold red][FAIL] Capsule execution failed:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+    table = Table(title="Capsule Execution Verdict", show_header=True, header_style="bold cyan")
+    table.add_column("Property", style="dim", width=22)
+    table.add_column("Value", style="bold")
+
+    table.add_row("Title", manifest.title)
+    table.add_row("Command", manifest.command)
+    table.add_row("Exit Code", str(result.exit_code))
+    table.add_row("Duration", f"{result.duration_ms} ms")
+    if result.fingerprint:
+        table.add_row("Received Fingerprint", f"[cyan]{result.fingerprint}[/cyan]")
+    if manifest.failure_fingerprint:
+        table.add_row("Expected Fingerprint", f"[dim]{manifest.failure_fingerprint}[/dim]")
+
+    console.print(table)
+
+    if result.fingerprint and result.fingerprint == manifest.failure_fingerprint:
+        console.print(f"\n[bold green][OK] Verified standalone reproduction: Failure fingerprint matches exactly.[/bold green]")
+    elif result.exit_code != 0:
+        console.print(f"\n[bold yellow][WARN] Execution failed (exit code {result.exit_code}) but fingerprint differed.[/bold yellow]")
+    else:
+        console.print(f"\n[bold green][PASS] Execution passed without failure.[/bold green]")
+
+
 if __name__ == "__main__":
     app()
 
