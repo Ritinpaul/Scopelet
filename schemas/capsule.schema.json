@@ -92,6 +92,11 @@
       "title": "Failure Fingerprint",
       "type": "string"
     },
+    "failure_description": {
+      "description": "Human-readable summary of failure symptoms",
+      "title": "Failure Description",
+      "type": "string"
+    },
     "files": {
       "description": "List of regular files included in the capsule",
       "items": {

@@ -31,6 +31,7 @@ class CapsuleManifest(BaseModel):
     expected: Dict[str, Any] = Field(default_factory=lambda: {"test_should_pass": True}, description="Expected outcome when bug is fixed")
     network_allowed: bool = Field(default=False, description="Whether network access is permitted during verification")
     failure_fingerprint: str = Field(default="", description="Target oracle failure fingerprint of the unpatched bug")
+    failure_description: Optional[str] = Field(default=None, description="Human-readable summary of failure symptoms")
     files: List[CapsuleFile] = Field(default_factory=list, description="List of regular files included in the capsule")
     approval: Optional[Dict[str, Any]] = Field(default=None, description="Manual privacy review approval record")
 
@@ -41,6 +42,7 @@ class TaskSpec(BaseModel):
     """
     title: str = Field(..., description="Defect title")
     command: str = Field(..., description="Verification test command")
+    failure_description: Optional[str] = Field(default=None, description="Expected failure symptom")
     allowed_changes: List[str] = Field(default_factory=list, description="Files permitted for bugfix modification")
     expected: Dict[str, Any] = Field(default_factory=lambda: {"test_should_pass": True}, description="Expected verification conditions")
     runtime: Dict[str, str] = Field(default_factory=lambda: {"node": "22"}, description="Target runtime specifications")

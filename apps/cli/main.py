@@ -497,9 +497,37 @@ def capsule_build_command(
     console.print(f"\n[bold green][OK] Capsule successfully built:[/bold green] [cyan]{archive_target}[/cyan]")
 
 
+@capsule_app.command(name="open")
+def capsule_open_command(
+    target: Path = typer.Argument(..., help="Path to .scopelet archive file"),
+    dir: Optional[Path] = typer.Option(None, "--dir", "-d", help="Directory where capsule should be extracted"),
+) -> None:
+    """
+    Extracts an independent reproduction capsule into a working directory and displays defect details.
+    """
+    from scopelet.capsule.solver import CapsuleSolver
+
+    archive_path = target.resolve()
+    if not archive_path.exists():
+        console.print(f"[bold red][FAIL] Capsule file not found:[/bold red] {archive_path}")
+        raise typer.Exit(code=1)
+
+    try:
+        manifest, extracted_dir, display_text = CapsuleSolver.open_capsule(
+            capsule_path=archive_path,
+            extract_to=dir,
+        )
+        console.print(display_text)
+        console.print(f"\n[bold green][SUCCESS] Capsule extracted to:[/bold green] [cyan]{extracted_dir}[/cyan]")
+    except Exception as e:
+        console.print(f"[bold red][FAIL] Failed to open capsule:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+
 @capsule_app.command(name="run")
 def capsule_run_command(
-    target: Path = typer.Argument(..., help="Path to .scopelet archive or extracted capsule directory"),
+    target: Optional[Path] = typer.Argument(None, help="Path to .scopelet archive or extracted capsule directory"),
+    dir: Optional[Path] = typer.Option(None, "--dir", help="Path to workspace directory (default: current directory)"),
     dep_dir: Optional[Path] = typer.Option(None, "--dep-dir", "-d", help="Directory containing pre-installed node_modules"),
     timeout: int = typer.Option(60, "--timeout", "-t", help="Timeout in seconds"),
 ) -> None:
@@ -508,7 +536,7 @@ def capsule_run_command(
     """
     from scopelet.capsule import CapsuleRunner
 
-    target_path = target.resolve()
+    target_path = (dir or target or Path.cwd()).resolve()
     console.print(f"[bold blue]Scopelet Capsule Standalone Runner[/bold blue]")
     console.print(f"[dim]Target:[/dim] [yellow]{target_path}[/yellow]\n")
 
@@ -522,6 +550,11 @@ def capsule_run_command(
     except Exception as e:
         console.print(f"[bold red][FAIL] Capsule execution failed:[/bold red] {e}")
         raise typer.Exit(code=1)
+
+    if result.stdout and result.stdout.strip():
+        console.print(Panel(result.stdout.strip(), title="Standard Output", border_style="dim"))
+    if result.stderr and result.stderr.strip():
+        console.print(Panel(result.stderr.strip(), title="Standard Error", border_style="red"))
 
     table = Table(title="Capsule Execution Verdict", show_header=True, header_style="bold cyan")
     table.add_column("Property", style="dim", width=22)
@@ -544,6 +577,28 @@ def capsule_run_command(
         console.print(f"\n[bold yellow][WARN] Execution failed (exit code {result.exit_code}) but fingerprint differed.[/bold yellow]")
     else:
         console.print(f"\n[bold green][PASS] Execution passed without failure.[/bold green]")
+
+
+@capsule_app.command(name="status")
+def capsule_status_command(
+    dir: Optional[Path] = typer.Option(None, "--dir", "-d", help="Path to extracted capsule workspace directory (default: current directory)"),
+) -> None:
+    """
+    Compares current workspace files against baseline in capsule.json and flags unauthorized edits.
+    """
+    from scopelet.capsule.solver import CapsuleSolver
+
+    ws_dir = (dir or Path.cwd()).resolve()
+    try:
+        status = CapsuleSolver.get_status(ws_dir)
+        console.print(status.format_text())
+        if not status.is_compliant:
+            raise typer.Exit(code=1)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[bold red][FAIL] Error checking capsule status:[/bold red] {e}")
+        raise typer.Exit(code=1)
 
 
 @app.command(name="scan")

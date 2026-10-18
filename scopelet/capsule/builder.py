@@ -31,6 +31,7 @@ class CapsuleBuilder:
         title: str,
         command: str,
         failure_fingerprint: str,
+        failure_description: Optional[str] = None,
         allowed_changes: Optional[List[str]] = None,
         runtime: Optional[Dict[str, str]] = None,
     ) -> CapsuleManifest:
@@ -102,6 +103,7 @@ class CapsuleBuilder:
             expected={"test_should_pass": True},
             network_allowed=False,
             failure_fingerprint=failure_fingerprint,
+            failure_description=failure_description,
             files=capsule_files,
         )
 
@@ -116,6 +118,7 @@ class CapsuleBuilder:
         task_spec = TaskSpec(
             title=title,
             command=command,
+            failure_description=failure_description,
             allowed_changes=effective_allowed,
             expected={"test_should_pass": True},
             runtime=effective_runtime,

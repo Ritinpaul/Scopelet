@@ -7,6 +7,7 @@ from .hasher import compute_capsule_hash
 from .packager import CapsulePackager, SecurityError
 from .builder import CapsuleBuilder
 from .runner import CapsuleRunner
+from .solver import CapsuleSolver, SolverStatus
 
 __all__ = [
     "CapsuleFile",
@@ -17,4 +18,6 @@ __all__ = [
     "SecurityError",
     "CapsuleBuilder",
     "CapsuleRunner",
+    "CapsuleSolver",
+    "SolverStatus",
 ]
