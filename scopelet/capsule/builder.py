@@ -107,10 +107,11 @@ class CapsuleBuilder:
             files=capsule_files,
         )
 
-        # Write capsule.json
+        # Write capsule.json with deterministic key sorting
         manifest_json_path = target / "capsule.json"
+        manifest_dict = json.loads(manifest.model_dump_json())
         manifest_json_path.write_text(
-            manifest.model_dump_json(indent=2),
+            json.dumps(manifest_dict, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
 

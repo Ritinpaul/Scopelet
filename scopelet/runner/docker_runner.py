@@ -11,6 +11,7 @@ from .result import ExecutionResult
 from .cache import compute_tree_hash
 from .security import DOCKER_SECURITY_CONFIG
 from ..fingerprint.normalizer import parse_failure
+from ..security.sandbox import truncate_output, validate_mount
 
 
 class DockerUnavailableError(Exception):
@@ -74,6 +75,8 @@ class DockerRunner:
             drive = mount_path[0].lower()
             mount_path = f"/{drive}{mount_path[2:]}"
 
+        validate_mount(abs_cwd, "/app", read_only=True)
+
         cmd_args = [
             "docker", "run", "--rm",
             "--network", DOCKER_SECURITY_CONFIG["network_mode"],
@@ -117,6 +120,9 @@ class DockerRunner:
             exit_code = 124
 
         duration_ms = int((time.perf_counter() - start_time) * 1000)
+
+        stdout = truncate_output(stdout)
+        stderr = truncate_output(stderr)
 
         combined = f"{stdout}\n{stderr}"
         failure = parse_failure(combined, cwd=cwd)

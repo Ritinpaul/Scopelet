@@ -9,7 +9,11 @@ from .models import (
     SolutionMetadata,
     SolutionVerification,
 )
-from .hasher import compute_capsule_hash
+from .hasher import (
+    compute_capsule_hash,
+    verify_capsule_dir,
+    verify_capsule_archive,
+)
 from .packager import CapsulePackager, SecurityError
 from .builder import CapsuleBuilder
 from .runner import CapsuleRunner
@@ -29,6 +33,8 @@ __all__ = [
     "SolutionMetadata",
     "SolutionVerification",
     "compute_capsule_hash",
+    "verify_capsule_dir",
+    "verify_capsule_archive",
     "CapsulePackager",
     "SecurityError",
     "CapsuleBuilder",

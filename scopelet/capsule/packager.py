@@ -9,7 +9,10 @@ import zipfile
 from pathlib import Path
 
 
-class SecurityError(Exception):
+from scopelet.security.sandbox import SafeExtractor, SecurityViolationError
+
+
+class SecurityError(SecurityViolationError):
     """Raised when an archive contains unsafe paths or directory traversal attempts."""
     pass
 
@@ -33,13 +36,13 @@ class CapsulePackager:
         fixed_time = (2026, 1, 1, 0, 0, 0)
 
         with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for file_path in sorted(source.rglob("*")):
-                if file_path.is_file():
-                    rel_path = file_path.relative_to(source).as_posix()
-                    zinfo = zipfile.ZipInfo(filename=rel_path, date_time=fixed_time)
-                    zinfo.external_attr = 0o644 << 16
-                    with file_path.open("rb") as f:
-                        zf.writestr(zinfo, f.read())
+            files_to_pack = [p for p in source.rglob("*") if p.is_file()]
+            for file_path in sorted(files_to_pack, key=lambda p: p.relative_to(source).as_posix()):
+                rel_path = file_path.relative_to(source).as_posix()
+                zinfo = zipfile.ZipInfo(filename=rel_path, date_time=fixed_time)
+                zinfo.external_attr = 0o644 << 16
+                with file_path.open("rb") as f:
+                    zf.writestr(zinfo, f.read())
 
         return output
 
