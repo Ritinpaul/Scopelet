@@ -644,6 +644,36 @@ def sanitize_command(
         console.print("[dim]No sensitive identifiers required transformation.[/dim]")
 
 
+@app.command(name="report")
+def report_command(
+    capsule_target: Path = typer.Argument(..., help="Path to capsule directory or .scopelet archive"),
+    original: Optional[Path] = typer.Option(None, "--original", "-o", help="Path to original source workspace"),
+    canary: Optional[list[str]] = typer.Option(None, "--canary", "-k", help="Custom canary tokens"),
+    as_json: bool = typer.Option(False, "--json", help="Output report in JSON format"),
+) -> None:
+    """
+    Generates a Scopelet privacy report comparing original workspace and capsule.
+    """
+    from scopelet.reports.privacy_report import PrivacyReportGenerator
+
+    target_capsule = capsule_target.resolve()
+    orig_dir = original.resolve() if original else target_capsule
+
+    canary_set = set(canary) if canary else set()
+    generator = PrivacyReportGenerator(canaries=canary_set)
+
+    try:
+        report_data = generator.generate_report(original_dir=orig_dir, capsule_target=target_capsule)
+    except Exception as e:
+        console.print(f"[bold red][FAIL] Privacy report generation failed:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+    if as_json:
+        console.print(report_data.model_dump_json(indent=2))
+    else:
+        console.print(f"[bold blue]{report_data.format_text()}[/bold blue]")
+
+
 if __name__ == "__main__":
     app()
 
