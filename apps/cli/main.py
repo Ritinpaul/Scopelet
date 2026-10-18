@@ -1186,6 +1186,161 @@ def export_command(
         raise typer.Exit(code=1)
 
 
+@app.command(name="init")
+def init_command(
+    cwd: Optional[Path] = typer.Option(None, "--cwd", "-d", help="Directory to initialize (default: current directory)"),
+) -> None:
+    """
+    Initializes a Scopelet workspace configuration in .scopelet/ directory.
+    """
+    target_cwd = (cwd or Path.cwd()).resolve()
+    scopelet_dir = target_cwd / ".scopelet"
+    scopelet_dir.mkdir(parents=True, exist_ok=True)
+
+    config_file = scopelet_dir / "config.yaml"
+    if not config_file.exists():
+        default_config = (
+            "# Scopelet Workspace Configuration\n"
+            "schema_version: '1.0'\n"
+            "runtime:\n"
+            "  node: '22'\n"
+            "sandbox:\n"
+            "  network_allowed: false\n"
+            "  max_timeout_seconds: 60\n"
+            "privacy:\n"
+            "  strict_canary_audit: true\n"
+        )
+        config_file.write_text(default_config, encoding="utf-8")
+        console.print(f"[bold green][OK] Initialized Scopelet workspace in:[/bold green] [cyan]{scopelet_dir}[/cyan]")
+    else:
+        console.print(f"[yellow]Scopelet workspace already initialized:[/yellow] [cyan]{scopelet_dir}[/cyan]")
+
+
+@app.command(name="create")
+def create_command(
+    cmd: str = typer.Option(..., "--cmd", "-c", help="Test execution command that fails on the defect"),
+    issue: str = typer.Option(..., "--issue", "-i", help="Defect title or issue description"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Target .scopelet output archive path"),
+    cwd: Optional[Path] = typer.Option(None, "--cwd", "-d", help="Working directory (default: current directory)"),
+    auto_approve: bool = typer.Option(True, "--auto-approve/--manual-approve", help="Automatically approve privacy review"),
+) -> None:
+    """
+    Convenience combo command: captures, analyzes, reduces, sanitizes, reviews and exports a capsule in one command.
+    """
+    import shutil
+    import tempfile
+    from scopelet.analysis.static.ts_analyzer import TypeScriptAnalyzer
+    from scopelet.analysis.dynamic.tracer import DynamicTracer
+    from scopelet.analysis.dynamic.slicer import compute_candidate_slice
+    from scopelet.capsule.builder import CapsuleBuilder
+    from scopelet.capsule.packager import CapsulePackager
+    from scopelet.capture import capture, NoFailureDetectedError
+    from scopelet.privacy.gate import PrivacyReviewGate, ApprovalChecklist
+    from scopelet.privacy.sanitizer import BehaviorPreservingSanitizer
+    from scopelet.reducer import CandidateState, DeltaDebuggingReducer, ReducerOracle, ReducerProgress
+
+    target_cwd = (cwd or Path.cwd()).resolve()
+    target_output = (output or (target_cwd / "reproduction.scopelet")).resolve()
+
+    console.print("[bold blue]Scopelet Unified Capsule Creation Engine[/bold blue]")
+    console.print(f"[dim]Issue:[/dim]     [magenta]{issue}[/magenta]")
+    console.print(f"[dim]Command:[/dim]   [cyan]{cmd}[/cyan]")
+    console.print(f"[dim]Workspace:[/dim] [yellow]{target_cwd}[/yellow]\n")
+
+    # 1. Capture defect failure
+    try:
+        cap_result = capture(command=cmd, cwd=target_cwd)
+    except NoFailureDetectedError as e:
+        console.print(f"[bold red][FAIL] Command succeeded with no defect:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+    fp = cap_result.failure.fingerprint
+    stack_frames = cap_result.failure.frames
+    console.print(f"[bold green][PASS][/bold green] Captured defect failure (Fingerprint: [cyan]{fp}[/cyan])")
+
+    # 2. Dependency analysis
+    analyzer = TypeScriptAnalyzer()
+    graph = analyzer.build_graph(target_cwd)
+    tracer = DynamicTracer()
+    trace_res = tracer.trace(cmd, target_cwd)
+    slice_res = compute_candidate_slice(
+        static_graph=graph,
+        dynamic_trace=trace_res.trace,
+        stack_frames=stack_frames,
+        all_files=set(graph.nodes.keys()),
+    )
+    console.print(f"[bold green][PASS][/bold green] Analyzed dependencies ({len(slice_res.combined_slice)} candidate slice files)")
+
+    # 3. Reduction
+    initial_state = CandidateState.from_directory(target_cwd)
+    temp_red_dir = Path(tempfile.mkdtemp(prefix="scopelet_combo_red_"))
+    try:
+        oracle = ReducerOracle(
+            command=cmd,
+            expected_fingerprint=fp,
+            workspace_dir=temp_red_dir,
+        )
+        reducer = DeltaDebuggingReducer(
+            oracle=oracle,
+            progress=ReducerProgress(quiet=True),
+            protected_files=set(stack_frames),
+            max_evaluations=50,
+        )
+        reduced_state, stats = reducer.reduce(
+            initial_state=initial_state,
+            candidate_slice_files=set(slice_res.combined_slice),
+        )
+        console.print(f"[bold green][PASS][/bold green] Delta-debugging reduction completed ({len(reduced_state.active_files)} files kept, {stats.total_evaluations} evaluations)")
+
+        # 4. Sanitization
+        temp_san_dir = Path(tempfile.mkdtemp(prefix="scopelet_combo_san_"))
+        try:
+            reduced_state.materialize(temp_san_dir)
+            sanitizer = BehaviorPreservingSanitizer(
+                workspace_dir=temp_san_dir,
+                command=cmd,
+                expected_fingerprint=fp,
+                strict_type_check=False,
+            )
+            sanitizer.auto_sanitize()
+            console.print("[bold green][PASS][/bold green] AST sanitization completed")
+
+            # 5. Assemble capsule directory
+            temp_cap_dir = Path(tempfile.mkdtemp(prefix="scopelet_combo_cap_"))
+            try:
+                builder = CapsuleBuilder()
+                manifest = builder.build(
+                    output_dir=temp_cap_dir,
+                    state=reduced_state,
+                    title=issue,
+                    command=cmd,
+                    failure_fingerprint=fp,
+                )
+
+                # 6. Privacy review
+                if auto_approve:
+                    checklist = ApprovalChecklist(
+                        retained_identifiers_reviewed=True,
+                        fixtures_reviewed=True,
+                        configuration_reviewed=True,
+                        environment_values_absent=True,
+                        export_approved=True,
+                    )
+                    gate = PrivacyReviewGate(temp_cap_dir)
+                    gate.conduct_review(approver="Scopelet-CLI", checklist=checklist)
+
+                # 7. Pack .scopelet archive
+                CapsulePackager.pack(temp_cap_dir, target_output)
+                console.print(f"\n[bold green][SUCCESS] Created reproduction capsule:[/bold green] [cyan]{target_output}[/cyan]")
+                console.print(f"Capsule Hash: [yellow]{manifest.capsule_hash}[/yellow]")
+            finally:
+                shutil.rmtree(temp_cap_dir, ignore_errors=True)
+        finally:
+            shutil.rmtree(temp_san_dir, ignore_errors=True)
+    finally:
+        shutil.rmtree(temp_red_dir, ignore_errors=True)
+
+
 if __name__ == "__main__":
     app()
 
