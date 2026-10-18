@@ -16,6 +16,12 @@ from .sanitizer.sanitizer import BehaviorPreservingSanitizer
 from .gate.models import ApprovalChecklist, ApprovalRecord
 from .gate.reviewer import PrivacyReviewGate, PrivacyApprovalError
 from .gate.exporter import CapsuleExporter
+from .adversarial_canary import (
+    CanaryGenerator,
+    CanaryInjector,
+    CanaryAuditor,
+    CanaryAuditReport,
+)
 
 __all__ = [
     "Sensitivity",
@@ -37,4 +43,8 @@ __all__ = [
     "PrivacyReviewGate",
     "PrivacyApprovalError",
     "CapsuleExporter",
+    "CanaryGenerator",
+    "CanaryInjector",
+    "CanaryAuditor",
+    "CanaryAuditReport",
 ]
