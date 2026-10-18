@@ -119,7 +119,32 @@ class CapsuleSolver:
         manifest = CapsuleManifest.model_validate(manifest_data)
         display_text = cls.get_open_display(manifest)
 
+        # Snapshot pristine baseline files for patch generation
+        cls.snapshot_baseline(target_dir)
+
         return manifest, target_dir, display_text
+
+    @classmethod
+    def snapshot_baseline(cls, workspace_dir: Path) -> Path:
+        """
+        Snapshots current workspace files as baseline in .scopelet/baseline.
+        """
+        ws = workspace_dir.resolve()
+        manifest_file = ws / "capsule.json"
+        if not manifest_file.exists():
+            raise FileNotFoundError(f"Missing capsule.json in workspace: {ws}")
+
+        manifest_data = json.loads(manifest_file.read_text(encoding="utf-8"))
+        manifest = CapsuleManifest.model_validate(manifest_data)
+        baseline_dir = ws / ".scopelet" / "baseline"
+        baseline_dir.mkdir(parents=True, exist_ok=True)
+        for cf in manifest.files:
+            src = ws / cf.path
+            dst = baseline_dir / cf.path
+            if src.exists():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_bytes(src.read_bytes())
+        return baseline_dir
 
     @classmethod
     def get_status(cls, workspace_dir: Path) -> SolverStatus:

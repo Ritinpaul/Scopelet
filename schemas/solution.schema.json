@@ -1,0 +1,104 @@
+{
+  "$defs": {
+    "SolutionVerification": {
+      "description": "Verification execution outcome for a candidate solution.",
+      "properties": {
+        "command": {
+          "description": "Verification command executed",
+          "title": "Command",
+          "type": "string"
+        },
+        "exit_code": {
+          "description": "Exit code of verification process",
+          "title": "Exit Code",
+          "type": "integer"
+        },
+        "success": {
+          "description": "Whether verification passed completely",
+          "title": "Success",
+          "type": "boolean"
+        },
+        "duration_ms": {
+          "default": 0,
+          "description": "Execution duration in milliseconds",
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "fingerprint": {
+          "description": "Failure fingerprint if failed",
+          "title": "Fingerprint",
+          "type": ["string", "null"]
+        }
+      },
+      "required": [
+        "command",
+        "exit_code",
+        "success"
+      ],
+      "title": "SolutionVerification",
+      "type": "object"
+    }
+  },
+  "description": "Metadata specification for a submitted capsule solution (solution.json).",
+  "properties": {
+    "schema_version": {
+      "default": "1.0",
+      "description": "Schema version",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "capsule_hash": {
+      "description": "SHA-256 hash of the capsule manifest being solved",
+      "title": "Capsule Hash",
+      "type": "string"
+    },
+    "patch_hash": {
+      "description": "SHA-256 hash of the unified diff solution.patch",
+      "title": "Patch Hash",
+      "type": "string"
+    },
+    "modified_files": {
+      "description": "Files modified in the patch",
+      "items": {
+        "type": "string"
+      },
+      "title": "Modified Files",
+      "type": "array"
+    },
+    "created_at": {
+      "description": "UTC ISO timestamp of solution submission",
+      "title": "Created At",
+      "type": "string"
+    },
+    "author": {
+      "default": "external_solver",
+      "description": "Author or solver identity",
+      "title": "Author",
+      "type": "string"
+    },
+    "verification": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SolutionVerification"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Pre-submission verification outcome",
+      "title": "Verification"
+    },
+    "summary": {
+      "description": "Optional description of the fix",
+      "title": "Summary",
+      "type": ["string", "null"]
+    }
+  },
+  "required": [
+    "capsule_hash",
+    "patch_hash",
+    "created_at"
+  ],
+  "title": "SolutionMetadata",
+  "type": "object"
+}

@@ -601,6 +601,114 @@ def capsule_status_command(
         raise typer.Exit(code=1)
 
 
+def execute_submission(
+    target: Optional[Path] = None,
+    dir: Optional[Path] = None,
+    author: Optional[str] = None,
+    message: Optional[str] = None,
+    skip_verify: bool = False,
+    output: Optional[Path] = None,
+) -> None:
+    from scopelet.capsule.submission import (
+        SubmissionEngine,
+        SubmissionError,
+        UnauthorizedModificationError,
+        VerificationError,
+    )
+
+    ws_dir = (dir or target or Path.cwd()).resolve()
+    console.print("[bold blue]Scopelet Candidate Solution Submission Engine[/bold blue]")
+    console.print(f"[dim]Workspace:[/dim] [yellow]{ws_dir}[/yellow]")
+    if author:
+        console.print(f"[dim]Author:[/dim]    [cyan]{author}[/cyan]")
+    console.print("")
+
+    engine = SubmissionEngine(workspace_dir=ws_dir)
+    try:
+        result = engine.create_submission(
+            author=author,
+            summary=message,
+            verify=not skip_verify,
+            output_dir=output,
+        )
+
+        console.print("[bold green][PASS][/bold green] Workspace edits are strictly compliant with task specification.")
+        if result.verified and result.metadata.verification:
+            ver = result.metadata.verification
+            console.print(f"[bold green][PASS][/bold green] Verification tests passed (Exit code: {ver.exit_code}, Duration: {ver.duration_ms} ms).")
+        elif not result.verified:
+            console.print("[bold yellow][WARN][/bold yellow] Verification tests were skipped (--skip-verify).")
+
+        table = Table(title="Generated Submission Artifacts", show_header=True, header_style="bold green")
+        table.add_column("Artifact", style="bold", width=20)
+        table.add_column("Path / Details", style="cyan")
+
+        table.add_row("solution.patch", f"{result.patch_file} (SHA-256: {result.patch_hash[:16]}...)")
+        table.add_row("solution.json", result.metadata_file)
+        table.add_row("Modified Files", ", ".join(result.modified_files))
+
+        console.print("")
+        console.print(table)
+        console.print(f"\n[bold green][SUCCESS] Candidate solution successfully packaged and ready for evaluation.[/bold green]")
+
+    except UnauthorizedModificationError as e:
+        console.print(f"[bold red][REJECTED] Unauthorized modification:[/bold red] {e}")
+        raise typer.Exit(code=1)
+    except VerificationError as e:
+        console.print(f"[bold red][FAILED] Pre-submission verification failed:[/bold red] {e}")
+        raise typer.Exit(code=1)
+    except SubmissionError as e:
+        console.print(f"[bold red][FAIL] Submission failed:[/bold red] {e}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        console.print(f"[bold red][FAIL] Unexpected error during submission:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+
+@capsule_app.command(name="submit")
+def capsule_submit_command(
+    target: Optional[Path] = typer.Argument(None, help="Path to capsule workspace directory (default: current directory)"),
+    dir: Optional[Path] = typer.Option(None, "--dir", "-d", help="Path to capsule workspace directory"),
+    author: Optional[str] = typer.Option(None, "--author", "-a", help="Author identity for solution metadata"),
+    message: Optional[str] = typer.Option(None, "--message", "-m", help="Summary message of the bugfix solution"),
+    skip_verify: bool = typer.Option(False, "--skip-verify", help="Skip running verification test suite before submission"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output directory for solution files (default: workspace directory)"),
+) -> None:
+    """
+    Submits a candidate fix by verifying test outcomes and generating solution.patch with solution.json.
+    """
+    execute_submission(
+        target=target,
+        dir=dir,
+        author=author,
+        message=message,
+        skip_verify=skip_verify,
+        output=output,
+    )
+
+
+@app.command(name="submit")
+def submit_command(
+    target: Optional[Path] = typer.Argument(None, help="Path to capsule workspace directory (default: current directory)"),
+    dir: Optional[Path] = typer.Option(None, "--dir", "-d", help="Path to capsule workspace directory"),
+    author: Optional[str] = typer.Option(None, "--author", "-a", help="Author identity for solution metadata"),
+    message: Optional[str] = typer.Option(None, "--message", "-m", help="Summary message of the bugfix solution"),
+    skip_verify: bool = typer.Option(False, "--skip-verify", help="Skip running verification test suite before submission"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output directory for solution files (default: workspace directory)"),
+) -> None:
+    """
+    Submits a candidate fix by verifying test outcomes and generating solution.patch with solution.json.
+    """
+    execute_submission(
+        target=target,
+        dir=dir,
+        author=author,
+        message=message,
+        skip_verify=skip_verify,
+        output=output,
+    )
+
+
 @app.command(name="scan")
 def scan_command(
     target: Path = typer.Argument(..., help="Path to capsule archive or workspace directory to scan"),
