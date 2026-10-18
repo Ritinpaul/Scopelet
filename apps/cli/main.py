@@ -546,6 +546,62 @@ def capsule_run_command(
         console.print(f"\n[bold green][PASS] Execution passed without failure.[/bold green]")
 
 
+@app.command(name="scan")
+def scan_command(
+    target: Path = typer.Argument(..., help="Path to capsule archive or workspace directory to scan"),
+    canary: Optional[list[str]] = typer.Option(None, "--canary", "-k", help="Custom canary token string to detect"),
+    entropy_threshold: float = typer.Option(4.5, "--entropy", help="Shannon entropy threshold for secret detection"),
+) -> None:
+    """
+    Scans a capsule archive or directory for secrets, credentials, canaries and git history leaks.
+    """
+    from scopelet.privacy import PrivacyScanner
+
+    target_path = target.resolve()
+    console.print("[bold blue]Scopelet Privacy & Secret Scanner[/bold blue]")
+    console.print(f"[dim]Scanning Target:[/dim] [yellow]{target_path}[/yellow]\n")
+
+    canary_set = set(canary) if canary else set()
+    scanner = PrivacyScanner(canaries=canary_set, entropy_threshold=entropy_threshold)
+
+    try:
+        report = scanner.scan(target_path)
+    except Exception as e:
+        console.print(f"[bold red][FAIL] Scan execution failed:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+    console.print(f"Scanned [bold cyan]{report.total_files_scanned}[/bold cyan] files. Detected [bold]{len(report.findings)}[/bold] finding(s).\n")
+
+    if report.findings:
+        table = Table(title="Privacy & Secret Findings", show_header=True, header_style="bold red")
+        table.add_column("File", style="yellow", width=26)
+        table.add_column("Line", style="dim", width=6)
+        table.add_column("Category", style="cyan", width=18)
+        table.add_column("Severity", style="bold", width=10)
+        table.add_column("Description", style="white")
+        table.add_column("Sample", style="dim")
+
+        for f in report.findings:
+            sev_color = "red" if f.severity in ("CRITICAL", "HIGH") else "yellow"
+            sev_styled = f"[{sev_color}]{f.severity}[/{sev_color}]"
+            table.add_row(
+                f.file_path,
+                str(f.line_number),
+                f.category,
+                sev_styled,
+                f.description,
+                f.matched_text,
+            )
+
+        console.print(table)
+
+    if report.has_critical_leaks:
+        console.print(f"\n[bold red][FAIL] Critical secrets or privacy leaks detected. Export blocked.[/bold red]")
+        raise typer.Exit(code=1)
+    else:
+        console.print(f"\n[bold green][OK] Privacy scan passed with no critical leaks detected.[/bold green]")
+
+
 if __name__ == "__main__":
     app()
 
