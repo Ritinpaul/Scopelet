@@ -50,7 +50,7 @@ class PatchApplier:
         return sorted(modified)
 
     @classmethod
-    def apply_patch(cls, patch_content: str, target_dir: Path) -> List[str]:
+    def apply_patch(cls, patch_content: str, target_dir: Path, strict: bool = True) -> List[str]:
         """
         Applies a unified diff patch to target_dir and returns the list of modified files.
         """
@@ -72,7 +72,7 @@ class PatchApplier:
                 # New file creation
                 dest_file = target / new_path
                 dest_file.parent.mkdir(parents=True, exist_ok=True)
-                new_content = cls._apply_hunks([], hunk_lines, new_path)
+                new_content = cls._apply_hunks([], hunk_lines, new_path, strict=strict)
                 dest_file.write_text("".join(new_content), encoding="utf-8")
                 modified_paths.append(new_path)
             else:
@@ -84,7 +84,7 @@ class PatchApplier:
                 original_content = dest_file.read_text(encoding="utf-8", errors="replace")
                 orig_lines = original_content.splitlines(keepends=True)
 
-                new_lines = cls._apply_hunks(orig_lines, hunk_lines, new_path)
+                new_lines = cls._apply_hunks(orig_lines, hunk_lines, new_path, strict=strict)
                 dest_file.write_text("".join(new_lines), encoding="utf-8")
                 modified_paths.append(new_path)
 
@@ -130,7 +130,13 @@ class PatchApplier:
         return s
 
     @classmethod
-    def _apply_hunks(cls, orig_lines: List[str], hunk_lines: List[str], filename: str) -> List[str]:
+    def _apply_hunks(
+        cls,
+        orig_lines: List[str],
+        hunk_lines: List[str],
+        filename: str,
+        strict: bool = True,
+    ) -> List[str]:
         """
         Applies unified diff hunks sequentially to an array of original lines.
         """
@@ -164,6 +170,15 @@ class PatchApplier:
         for old_start, old_len, new_start, new_len, body in hunk_blocks:
             # 1-based line indexing
             target_start_idx = max(0, old_start - 1)
+
+            if strict and orig_lines:
+                expected_old = [l[1:].rstrip("\r\n") for l in body if l.startswith(" ") or l.startswith("-")]
+                if expected_old:
+                    actual_old = [l.rstrip("\r\n") for l in orig_lines[target_start_idx : target_start_idx + len(expected_old)]]
+                    if expected_old != actual_old:
+                        raise PatchError(
+                            f"Hunk at line {old_start} in {filename} does not match target file context (context drift detected)."
+                        )
 
             # Copy unchanged lines preceding this hunk
             while orig_idx < target_start_idx and orig_idx < len(orig_lines):

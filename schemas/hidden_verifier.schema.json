@@ -1,0 +1,277 @@
+{
+  "$defs": {
+    "PolicyResult": {
+      "description": "Result of evaluating an individual patch boundary or security policy.",
+      "properties": {
+        "policy_name": {
+          "description": "Name of the security/boundary policy",
+          "title": "Policy Name",
+          "type": "string"
+        },
+        "passed": {
+          "description": "Whether the patch complies with this policy",
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "details": {
+          "description": "Evaluation notes or violation details",
+          "title": "Details",
+          "type": "string"
+        },
+        "severity": {
+          "default": "CRITICAL",
+          "description": "Severity level if violation occurs",
+          "enum": [
+            "CRITICAL",
+            "WARNING"
+          ],
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "policy_name",
+        "passed",
+        "details"
+      ],
+      "title": "PolicyResult",
+      "type": "object"
+    },
+    "TestRunVerdict": {
+      "description": "Standardized test run verdict within the verification engine.",
+      "properties": {
+        "command": {
+          "description": "Executed command string",
+          "title": "Command",
+          "type": "string"
+        },
+        "passed": {
+          "description": "Whether the test run passed successfully",
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "exit_code": {
+          "description": "Process exit code",
+          "title": "Exit Code",
+          "type": "integer"
+        },
+        "duration_ms": {
+          "default": 0,
+          "description": "Execution duration in milliseconds",
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Normalized failure fingerprint if test failed",
+          "title": "Fingerprint"
+        },
+        "stdout": {
+          "default": "",
+          "description": "Captured standard output",
+          "title": "Stdout",
+          "type": "string"
+        },
+        "stderr": {
+          "default": "",
+          "description": "Captured standard error",
+          "title": "Stderr",
+          "type": "string"
+        }
+      },
+      "required": [
+        "command",
+        "passed",
+        "exit_code"
+      ],
+      "title": "TestRunVerdict",
+      "type": "object"
+    },
+    "Verdict": {
+      "description": "Final decision verdict rendered by the Private Hidden Verifier oracle.",
+      "enum": [
+        "ACCEPT",
+        "REJECT",
+        "REVIEW"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    }
+  },
+  "description": "Authoritative verification report produced by the Private Hidden Verifier.",
+  "properties": {
+    "schema_version": {
+      "default": "1.0",
+      "description": "Schema version",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "verdict": {
+      "$ref": "#/$defs/Verdict",
+      "description": "Authoritative verdict: ACCEPT, REJECT, or REVIEW"
+    },
+    "patch_hash": {
+      "description": "SHA-256 hash of the applied patch",
+      "title": "Patch Hash",
+      "type": "string"
+    },
+    "un_sanitized": {
+      "default": false,
+      "description": "Whether patch identifiers were un-sanitized",
+      "title": "Un Sanitized",
+      "type": "boolean"
+    },
+    "modified_files": {
+      "description": "Files modified by patch",
+      "items": {
+        "type": "string"
+      },
+      "title": "Modified Files",
+      "type": "array"
+    },
+    "target_test": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TestRunVerdict"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Original failing bug reproduction test result"
+    },
+    "hidden_regression_test": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TestRunVerdict"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Hidden regression test suite result"
+    },
+    "full_test_suite": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TestRunVerdict"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Complete repository test suite result"
+    },
+    "type_check": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TestRunVerdict"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Type checker result (e.g. tsc or mypy)"
+    },
+    "build_check": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TestRunVerdict"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Build pipeline validation result"
+    },
+    "lint_check": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TestRunVerdict"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Linter analysis result"
+    },
+    "policy_results": {
+      "description": "Boundary and security policy checks",
+      "items": {
+        "$ref": "#/$defs/PolicyResult"
+      },
+      "title": "Policy Results",
+      "type": "array"
+    },
+    "unexpected_files": {
+      "description": "Unexpected files modified or created",
+      "items": {
+        "type": "string"
+      },
+      "title": "Unexpected Files",
+      "type": "array"
+    },
+    "rejection_reasons": {
+      "description": "List of reasons if rejected",
+      "items": {
+        "type": "string"
+      },
+      "title": "Rejection Reasons",
+      "type": "array"
+    },
+    "review_notes": {
+      "description": "Diagnostic notes if review is required",
+      "items": {
+        "type": "string"
+      },
+      "title": "Review Notes",
+      "type": "array"
+    },
+    "duration_ms": {
+      "default": 0,
+      "description": "Total verification duration in milliseconds",
+      "title": "Duration Ms",
+      "type": "integer"
+    },
+    "created_at": {
+      "description": "ISO UTC timestamp of verification run",
+      "title": "Created At",
+      "type": "string"
+    },
+    "metadata": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional extra metadata",
+      "title": "Metadata"
+    }
+  },
+  "required": [
+    "verdict",
+    "patch_hash",
+    "created_at"
+  ],
+  "title": "HiddenVerifierReport",
+  "type": "object"
+}

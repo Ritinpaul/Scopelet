@@ -824,6 +824,138 @@ def capsule_verify_command(
     )
 
 
+@app.command(name="reintegrate")
+def reintegrate_command(
+    patch: Path = typer.Argument(..., help="Path to solution.patch file"),
+    repo: Optional[Path] = typer.Option(None, "--repo", "-r", help="Path to target repository directory"),
+    mapping: Optional[Path] = typer.Option(None, "--mapping", "-m", help="Path to mapping.json for reversing sanitization"),
+    semantic: bool = typer.Option(True, "--semantic/--exact-only", help="Enable semantic drift tolerance V2"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Test application inside temporary isolated worktree"),
+) -> None:
+    """
+    Applies candidate patch back to original repository using identifier reverse mapping and drift resilience.
+    """
+    from scopelet.reintegration import SemanticPatchApplierV2, ReintegrationApplierV1, IsolatedWorktree
+
+    patch_path = patch.resolve()
+    repo_path = (repo or Path.cwd()).resolve()
+    if not patch_path.exists():
+        console.print(f"[bold red][FAIL] Patch file not found:[/bold red] {patch_path}")
+        raise typer.Exit(code=1)
+
+    console.print("[bold blue]Scopelet Patch Reintegration Engine[/bold blue]")
+    console.print(f"[dim]Patch:[/dim] [yellow]{patch_path}[/yellow]")
+    console.print(f"[dim]Target Repo:[/dim] [cyan]{repo_path}[/cyan]\n")
+
+    patch_content = patch_path.read_text(encoding="utf-8")
+
+    if semantic:
+        applier = SemanticPatchApplierV2(repo_dir=repo_path, mapping_file=mapping)
+    else:
+        applier = ReintegrationApplierV1(repo_dir=repo_path, mapping_file=mapping)
+
+    if dry_run:
+        with IsolatedWorktree(repo_path, prefer_git_worktree=False) as wt:
+            res = applier.apply(patch_content, target_dir=wt)
+    else:
+        res = applier.apply(patch_content, target_dir=repo_path)
+
+    if res.success:
+        console.print("[bold green][SUCCESS] Patch reintegrated cleanly.[/bold green]")
+        console.print(f"Modified files: [cyan]{', '.join(res.modified_files)}[/cyan]")
+        if getattr(res, "drift_detected", False):
+            console.print(f"[yellow][WARN] Drift detected and adapted (Confidence: {res.confidence_score:.2f})[/yellow]")
+    else:
+        console.print(f"[bold red][FAIL] Reintegration failed:[/bold red] {res.error}")
+        raise typer.Exit(code=1)
+
+
+@app.command(name="hidden-verify")
+def hidden_verify_command(
+    patch: Path = typer.Argument(..., help="Path to solution.patch file"),
+    repo: Optional[Path] = typer.Option(None, "--repo", "-r", help="Path to private repository directory"),
+    target_cmd: Optional[str] = typer.Option(None, "--cmd", help="Target bug reproduction test command"),
+    hidden_regression_cmd: Optional[str] = typer.Option(None, "--hidden-regression-cmd", help="Hidden regression test suite command"),
+    type_check_cmd: Optional[str] = typer.Option(None, "--type-check-cmd", help="Type checker command (e.g. tsc --noEmit or mypy)"),
+    build_cmd: Optional[str] = typer.Option(None, "--build-cmd", help="Build command (e.g. tsc --build or npm run build)"),
+    lint_cmd: Optional[str] = typer.Option(None, "--lint-cmd", help="Linter command (e.g. eslint or ruff)"),
+    mapping: Optional[Path] = typer.Option(None, "--mapping", "-m", help="Path to mapping.json for reversing sanitization"),
+    timeout: int = typer.Option(60, "--timeout", "-t", help="Command execution timeout in seconds"),
+) -> None:
+    """
+    Authoritative Private Hidden Verifier oracle rendering ACCEPT, REJECT, or REVIEW verdicts.
+    """
+    from scopelet.verifier import PrivateHiddenVerifier, Verdict
+
+    patch_path = patch.resolve()
+    repo_path = (repo or Path.cwd()).resolve()
+
+    console.print("[bold blue]Scopelet Private Hidden Verifier Oracle[/bold blue]")
+    console.print(f"[dim]Patch:[/dim] [yellow]{patch_path}[/yellow]")
+    console.print(f"[dim]Private Repository:[/dim] [cyan]{repo_path}[/cyan]\n")
+
+    verifier = PrivateHiddenVerifier(
+        repo_dir=repo_path,
+        mapping_file=mapping,
+        hidden_regression_cmd=hidden_regression_cmd,
+        type_check_cmd=type_check_cmd,
+        build_cmd=build_cmd,
+        lint_cmd=lint_cmd,
+    )
+
+    report = verifier.verify(
+        solution_patch=patch_path,
+        target_cmd=target_cmd,
+        timeout=timeout,
+    )
+
+    table = Table(title="Authoritative Verifier Verdict", show_header=True, header_style="bold magenta")
+    table.add_column("Check / Metric", style="dim", width=24)
+    table.add_column("Outcome", style="bold")
+
+    v_style = "bold green" if report.verdict == Verdict.ACCEPT else ("bold yellow" if report.verdict == Verdict.REVIEW else "bold red")
+    table.add_row("Verdict", f"[{v_style}]{report.verdict.value}[/{v_style}]")
+    table.add_row("Patch SHA-256", f"[cyan]{report.patch_hash[:16]}...[/cyan]")
+    table.add_row("Modified Files", ", ".join(report.modified_files) if report.modified_files else "(None)")
+    table.add_row("Execution Duration", f"{report.duration_ms} ms")
+
+    if report.target_test:
+        t_style = "green" if report.target_test.passed else "red"
+        table.add_row("Target Bug Test", f"[{t_style}]{report.target_test.command} (exit {report.target_test.exit_code})[/{t_style}]")
+
+    if report.hidden_regression_test:
+        r_style = "green" if report.hidden_regression_test.passed else "red"
+        table.add_row("Hidden Regressions", f"[{r_style}]{report.hidden_regression_test.command} (exit {report.hidden_regression_test.exit_code})[/{r_style}]")
+
+    if report.type_check:
+        tc_style = "green" if report.type_check.passed else "red"
+        table.add_row("Type Checker", f"[{tc_style}]{report.type_check.command} (exit {report.type_check.exit_code})[/{tc_style}]")
+
+    if report.build_check:
+        b_style = "green" if report.build_check.passed else "red"
+        table.add_row("Build Pipeline", f"[{b_style}]{report.build_check.command} (exit {report.build_check.exit_code})[/{b_style}]")
+
+    console.print(table)
+
+    if report.rejection_reasons:
+        console.print("\n[bold red]Rejection Reasons:[/bold red]")
+        for r in report.rejection_reasons:
+            console.print(f"  [red]![/red] {r}")
+
+    if report.review_notes:
+        console.print("\n[bold yellow]Review Notes:[/bold yellow]")
+        for n in report.review_notes:
+            console.print(f"  [yellow]*[/yellow] {n}")
+
+    if report.verdict == Verdict.ACCEPT:
+        console.print(f"\n[bold green][SUCCESS] Candidate solution ACCEPTED by Private Hidden Verifier.[/bold green]")
+    elif report.verdict == Verdict.REVIEW:
+        console.print(f"\n[bold yellow][REVIEW] Candidate solution flagged for human engineer review.[/bold yellow]")
+    else:
+        console.print(f"\n[bold red][REJECTED] Candidate solution REJECTED by Private Hidden Verifier.[/bold red]")
+        raise typer.Exit(code=1)
+
+
 @app.command(name="scan")
 def scan_command(
     target: Path = typer.Argument(..., help="Path to capsule archive or workspace directory to scan"),
