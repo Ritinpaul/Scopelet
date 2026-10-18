@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scopelet"
+version = "0.1.0"
+description = "Behavior-Preserving Bug Minimization & Private Hidden Verification Engine"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.12.0",
+    "rich>=13.0.0",
+    "pydantic>=2.0.0",
+    "structlog>=24.0.0",
+]
+
+[project.scripts]
+scopelet = "apps.cli.main:app"
+
+[tool.setuptools.packages.find]
+include = ["scopelet*", "apps*"]
+exclude = ["fixtures*", "tests*", "scripts*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
