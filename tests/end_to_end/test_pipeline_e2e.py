@@ -199,3 +199,36 @@ def test_e2e_fixture_rounding_bug():
         genuine_patch=genuine_patch,
         capsule_title="Currency Rounding Truncation Defect",
     )
+
+
+def test_e2e_fixture_cache_bug():
+    """
+    Validates complete lifecycle on fixtures/cache-bug (Fixture 3 of 3).
+    Satisfies Gate: 3 of 3 fixtures complete full lifecycle.
+    """
+    fixture_dir = Path("fixtures/cache-bug").resolve()
+    assert fixture_dir.exists()
+
+    genuine_patch = (
+        "--- a/src/profile/profile.service.ts\n"
+        "+++ b/src/profile/profile.service.ts\n"
+        "@@ -32,7 +32,6 @@\n"
+        "   async updateProfile(userId: string, updates: Partial<UserRecord>): Promise<UserRecord> {\n"
+        "     const updated = await this.userRepo.update(userId, updates);\n"
+        "-    // Defect: Cache entry is NOT deleted or refreshed!\n"
+        "-    // await this.cache.delete(`user:profile:${userId}`); <-- MISSING\n"
+        "+    await this.cache.delete(`user:profile:${userId}`);\n"
+        "     return updated;\n"
+        "   }\n"
+    )
+
+    _run_full_lifecycle_on_fixture(
+        fixture_dir=fixture_dir,
+        test_cmd="npm test",
+        target_cmd="npm run test:cache",
+        hidden_cmd="npm run test:hidden",
+        full_cmd="npm run test:all",
+        genuine_patch=genuine_patch,
+        capsule_title="In-Memory Profile Cache Invalidation Defect",
+    )
+

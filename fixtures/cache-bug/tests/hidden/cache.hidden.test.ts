@@ -28,8 +28,8 @@ describe('Private Hidden Verification Suite - Invalidation Boundaries', () => {
     // Warm user alice
     await service.getProfile('u_alice');
 
-    // Add Bob to DB directly
-    await userRepo.update('u_alice', { name: 'Alice V2' });
+    // Update Alice via service
+    await service.updateProfile('u_alice', { name: 'Alice V2' });
     const fresh = await service.getProfile('u_alice');
     expect(fresh.name).toBe('Alice V2');
   });
