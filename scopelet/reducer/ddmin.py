@@ -7,7 +7,7 @@ Guarantees behavior preservation by gating every reduction against the oracle fa
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Any, Dict, Iterable, List, Optional, Set
 from pydantic import BaseModel, Field
 
 from .candidate import CandidateState
@@ -39,11 +39,17 @@ class DeltaDebuggingReducer:
         progress: Optional[ReducerProgress] = None,
         protected_files: Optional[Set[str]] = None,
         max_evaluations: int = 500,
+        ai_ranker: Optional[Any] = None,
+        failure_summary: Optional[str] = None,
+        stack_frames: Optional[List[str]] = None,
     ):
         self.oracle = oracle
         self.progress = progress or ReducerProgress(quiet=True)
         self.protected_files: Set[str] = {Path(p).as_posix() for p in (protected_files or set())}
         self.max_evaluations = max_evaluations
+        self.ai_ranker = ai_ranker
+        self.failure_summary = failure_summary
+        self.stack_frames = stack_frames
 
     def reduce(
         self,
@@ -142,10 +148,19 @@ class DeltaDebuggingReducer:
 
         # Step 4: File-by-file delta debugging
         self.progress.on_phase_start("Phase 4: File-by-File Minimization", "Testing individual file removals")
-        removable_files = sorted([
+        removable_files = [
             f for f in current_state.active_files
             if f not in current_state.essential_files and f not in self.protected_files
-        ])
+        ]
+
+        if self.ai_ranker and removable_files:
+            summary = self.failure_summary or "Test failure"
+            resp = self.ai_ranker.rank_files(removable_files, summary, stack_frames=self.stack_frames)
+            scores = {r.file: r.relevance for r in resp.rankings}
+            # Least relevant files first for removal
+            removable_files.sort(key=lambda f: (scores.get(f, 0.5), f))
+        else:
+            removable_files.sort()
 
         for file_path in removable_files:
             if self.oracle.total_evaluations >= self.max_evaluations:

@@ -274,6 +274,7 @@ def reduce_command(
     output_dir: Optional[Path] = typer.Option(None, "--output-dir", "-o", help="Target output directory for reduced reproduction"),
     max_evals: int = typer.Option(500, "--max-evals", help="Maximum oracle evaluations allowed"),
     use_slice: bool = typer.Option(True, "--use-slice/--no-slice", help="Pre-filter using static and dynamic candidate slice"),
+    ai_ranking: bool = typer.Option(True, "--ai-ranker/--no-ai-ranker", help="Use AI relevance ranking to accelerate file pruning"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Run without live step reporting"),
 ) -> None:
     """
@@ -371,11 +372,22 @@ def reduce_command(
     progress = ReducerProgress(console=console, quiet=quiet)
     protected = set(stack_frames)
 
+    ranker = None
+    if ai_ranking:
+        try:
+            from scopelet.ai import AIRelevanceRanker
+            ranker = AIRelevanceRanker()
+        except Exception:
+            pass
+
     reducer = DeltaDebuggingReducer(
         oracle=oracle,
         progress=progress,
         protected_files=protected,
         max_evaluations=max_evals,
+        ai_ranker=ranker,
+        failure_summary=f"Target Fingerprint: {detected_fingerprint}",
+        stack_frames=stack_frames,
     )
 
     try:
