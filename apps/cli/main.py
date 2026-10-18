@@ -143,15 +143,18 @@ def run_command(
 def analyze_command(
     cwd: Optional[Path] = typer.Option(None, "--cwd", "-d", help="Working directory path (default: current directory)"),
     entry: Optional[str] = typer.Option(None, "--entry", "-e", help="Entry point file to compute reachability from"),
+    cmd: Optional[str] = typer.Option(None, "--cmd", "-c", help="Test command to run for dynamic runtime coverage tracing"),
     mermaid: bool = typer.Option(False, "--mermaid", "-m", help="Output Mermaid dependency diagram"),
 ) -> None:
     """
     Constructs the static repository dependency graph and performs reachability analysis.
+    Optionally executes dynamic runtime tracing to produce an optimized candidate slice.
     """
     from scopelet.analysis.static import TypeScriptAnalyzer
+    from scopelet.analysis.dynamic import DynamicTracer, compute_candidate_slice
 
     target_cwd = (cwd or Path.cwd()).resolve()
-    console.print(f"[bold blue]Scopelet Static Analysis Engine[/bold blue]")
+    console.print(f"[bold blue]Scopelet Analysis Engine[/bold blue]")
     console.print(f"[dim]Analyzing repository in:[/dim] [yellow]{target_cwd}[/yellow]...\n")
 
     analyzer = TypeScriptAnalyzer()
@@ -160,49 +163,107 @@ def analyze_command(
     total_files = len(graph.nodes)
     console.print(f"Discovered [bold cyan]{total_files}[/bold cyan] source files.")
 
-    # Determine entry points
+    # Determine entry points and stack frames
     entry_points = [entry] if entry else []
-    if not entry_points:
-        # Default: auto-detect failing tests from .scopelet/failure.json if available
-        failure_json = target_cwd / ".scopelet" / "failure.json"
-        if failure_json.exists():
-            import json
-            try:
-                data = json.loads(failure_json.read_text(encoding="utf-8"))
-                entry_points.extend(data.get("frames", []))
-            except Exception:
-                pass
+    stack_frames = []
+    detected_cmd = cmd
 
-    if entry_points:
-        console.print(f"Entry points: [magenta]{', '.join(entry_points)}[/magenta]")
-        reachable_files = graph.reachable(entry_points)
-        unreachable_files = set(graph.nodes.keys()) - reachable_files
+    failure_json = target_cwd / ".scopelet" / "failure.json"
+    session_json = target_cwd / ".scopelet" / "session.json"
 
-        table = Table(title="Reachability Slice Summary", show_header=True, header_style="bold green")
-        table.add_column("Category", style="dim", width=25)
-        table.add_column("Count", style="bold")
-        table.add_column("Percentage", style="cyan")
+    if failure_json.exists():
+        import json
+        try:
+            data = json.loads(failure_json.read_text(encoding="utf-8"))
+            frames = data.get("frames", [])
+            stack_frames.extend(frames)
+            if not entry_points:
+                entry_points.extend(frames)
+        except Exception:
+            pass
 
-        table.add_row("Total Discovered Files", str(total_files), "100.0%")
-        pct_reach = (len(reachable_files) / total_files * 100) if total_files else 0
-        table.add_row("Reachable Dependency Slice", str(len(reachable_files)), f"{pct_reach:.1f}%")
-        pct_unreach = (len(unreachable_files) / total_files * 100) if total_files else 0
-        table.add_row("Unreachable (Safe to Prune)", str(len(unreachable_files)), f"{pct_unreach:.1f}%")
+    if not detected_cmd and session_json.exists():
+        import json
+        try:
+            s_data = json.loads(session_json.read_text(encoding="utf-8"))
+            detected_cmd = s_data.get("command")
+        except Exception:
+            pass
 
-        console.print(table)
+    # Optional dynamic tracing
+    dynamic_trace_result = None
+    if detected_cmd:
+        console.print(f"\n[bold magenta]Tracing runtime execution:[/bold magenta] [cyan]{detected_cmd}[/cyan]...")
+        tracer = DynamicTracer()
+        report = tracer.trace(detected_cmd, target_cwd)
+        dynamic_trace_result = report.trace
+        console.print(f"Dynamic execution recorded [bold green]{len(dynamic_trace_result.executed_files)}[/bold green] executed repository files.")
 
-        tree_lines = []
-        for rf in sorted(reachable_files):
-            deps = graph.get_dependencies(rf)
-            dep_count = f"({len(deps)} deps)" if deps else "(leaf)"
-            tree_lines.append(f"  * [green]{rf}[/green] [dim]{dep_count}[/dim]")
+    if entry_points or dynamic_trace_result:
+        all_repo_files = set(graph.nodes.keys())
+        if dynamic_trace_result:
+            slice_result = compute_candidate_slice(
+                static_graph=graph,
+                dynamic_trace=dynamic_trace_result,
+                stack_frames=stack_frames or entry_points,
+                all_files=all_repo_files,
+            )
 
-        console.print(Panel("\n".join(tree_lines), title="Reachable Static Slice", border_style="green"))
+            table = Table(title="Candidate Slice Analysis", show_header=True, header_style="bold green")
+            table.add_column("Category", style="dim", width=25)
+            table.add_column("Count", style="bold")
+            table.add_column("Percentage", style="cyan")
 
-        if mermaid:
+            table.add_row("Total Repository Files", str(slice_result.total_files_count), "100.0%")
+            pct_static = (len(slice_result.static_reachable) / slice_result.total_files_count * 100) if slice_result.total_files_count else 0
+            table.add_row("Static Reachable Set", str(len(slice_result.static_reachable)), f"{pct_static:.1f}%")
+            pct_dyn = (len(slice_result.dynamic_executed) / slice_result.total_files_count * 100) if slice_result.total_files_count else 0
+            table.add_row("Dynamic Executed Set", str(len(slice_result.dynamic_executed)), f"{pct_dyn:.1f}%")
+            table.add_row("Stack Frame Roots", str(len(slice_result.stack_frames)), "-")
+            pct_comb = (slice_result.slice_count / slice_result.total_files_count * 100) if slice_result.total_files_count else 0
+            table.add_row("Combined Candidate Slice", str(slice_result.slice_count), f"{pct_comb:.1f}%")
+            table.add_row("Pruned Files", str(len(slice_result.pruned_files)), f"{slice_result.reduction_percentage:.1f}%")
+
+            console.print(table)
+
+            tree_lines = []
+            for rf in slice_result.combined_slice:
+                tag = "[bold cyan](dynamic)[/bold cyan]" if rf in slice_result.dynamic_executed else "[dim](static dep)[/dim]"
+                if rf in slice_result.stack_frames:
+                    tag = "[bold red](stack root)[/bold red]"
+                tree_lines.append(f"  * [green]{rf}[/green] {tag}")
+
+            console.print(Panel("\n".join(tree_lines), title="Optimal Candidate Slice", border_style="green"))
+
+        else:
+            reachable_files = graph.reachable(entry_points)
+            unreachable_files = set(graph.nodes.keys()) - reachable_files
+
+            table = Table(title="Reachability Slice Summary", show_header=True, header_style="bold green")
+            table.add_column("Category", style="dim", width=25)
+            table.add_column("Count", style="bold")
+            table.add_column("Percentage", style="cyan")
+
+            table.add_row("Total Discovered Files", str(total_files), "100.0%")
+            pct_reach = (len(reachable_files) / total_files * 100) if total_files else 0
+            table.add_row("Reachable Dependency Slice", str(len(reachable_files)), f"{pct_reach:.1f}%")
+            pct_unreach = (len(unreachable_files) / total_files * 100) if total_files else 0
+            table.add_row("Unreachable (Safe to Prune)", str(len(unreachable_files)), f"{pct_unreach:.1f}%")
+
+            console.print(table)
+
+            tree_lines = []
+            for rf in sorted(reachable_files):
+                deps = graph.get_dependencies(rf)
+                dep_count = f"({len(deps)} deps)" if deps else "(leaf)"
+                tree_lines.append(f"  * [green]{rf}[/green] [dim]{dep_count}[/dim]")
+
+            console.print(Panel("\n".join(tree_lines), title="Reachable Static Slice", border_style="green"))
+
+        if mermaid and entry_points:
             console.print(Panel(graph.to_mermaid(entry_points), title="Mermaid Dependency Flowchart", border_style="cyan"))
     else:
-        console.print("[dim]Tip: specify --entry <path/to/test.ts> to compute reachability slice.[/dim]")
+        console.print("[dim]Tip: specify --entry <test.ts> or --cmd <npm test> to compute candidate slice.[/dim]")
 
 
 if __name__ == "__main__":
