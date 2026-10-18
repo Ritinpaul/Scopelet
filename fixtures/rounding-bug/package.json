@@ -1,0 +1,17 @@
+{
+  "name": "@ecommerce/pricing-engine",
+  "version": "1.0.0",
+  "description": "E-commerce checkout pricing engine with currency and discount rounding",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "vitest run",
+    "test:rounding": "vitest run tests/rounding.test.ts",
+    "test:hidden": "vitest run --config vitest.hidden.config.ts",
+    "test:all": "vitest run tests/",
+    "build": "tsc --build"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@saas/timezone-billing",
+  "version": "1.0.0",
+  "description": "SaaS billing and invoice engine with multi-tenant timezone support",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "vitest run",
+    "test:invoice": "vitest run tests/invoice-timezone.test.ts",
+    "test:hidden": "vitest run --config vitest.hidden.config.ts",
+    "test:all": "vitest run tests/",
+    "build": "tsc --build"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}

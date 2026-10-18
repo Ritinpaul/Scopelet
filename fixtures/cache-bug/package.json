@@ -1,0 +1,17 @@
+{
+  "name": "@identity/profile-cache",
+  "version": "1.0.0",
+  "description": "User profile microservice with redis caching and invalidation",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "vitest run",
+    "test:cache": "vitest run tests/cache.test.ts",
+    "test:hidden": "vitest run --config vitest.hidden.config.ts",
+    "test:all": "vitest run tests/",
+    "build": "tsc --build"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}
