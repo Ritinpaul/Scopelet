@@ -4,7 +4,7 @@ Pydantic data models for Scopelet capsule archives, manifests, and task specific
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -32,6 +32,7 @@ class CapsuleManifest(BaseModel):
     network_allowed: bool = Field(default=False, description="Whether network access is permitted during verification")
     failure_fingerprint: str = Field(default="", description="Target oracle failure fingerprint of the unpatched bug")
     files: List[CapsuleFile] = Field(default_factory=list, description="List of regular files included in the capsule")
+    approval: Optional[Dict[str, Any]] = Field(default=None, description="Manual privacy review approval record")
 
 
 class TaskSpec(BaseModel):

@@ -23,6 +23,8 @@ IGNORE_SCAN_DIRS = {
     "__pycache__",
     "dist",
     "build",
+    ".scopelet",
+    ".git",
 }
 
 

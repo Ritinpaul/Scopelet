@@ -674,6 +674,96 @@ def report_command(
         console.print(f"[bold blue]{report_data.format_text()}[/bold blue]")
 
 
+@app.command(name="review")
+def review_command(
+    target: Path = typer.Argument(..., help="Path to workspace directory to review"),
+    approver: Optional[str] = typer.Option(None, "--approver", "-a", help="Reviewer identity name"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Automatically confirm all checklist questions"),
+) -> None:
+    """
+    Conducts manual privacy review and records export authorization.
+    """
+    from scopelet.privacy.gate import PrivacyReviewGate, ApprovalChecklist, PrivacyApprovalError
+
+    target_dir = target.resolve()
+    console.print("[bold blue]Scopelet Privacy Review Gate[/bold blue]")
+    console.print(f"[dim]Reviewing Target:[/dim] [yellow]{target_dir}[/yellow]\n")
+
+    gate = PrivacyReviewGate(target_dir)
+    precond_ok, precond_err = gate.check_preconditions()
+    if not precond_ok:
+        console.print(f"[bold red][FAIL] Precondition Check Failed:[/bold red] {precond_err}")
+        raise typer.Exit(code=1)
+
+    reviewer_name = approver or "Reviewer"
+    if not yes and not approver:
+        reviewer_name = typer.prompt("Enter your name / identity for approval signature")
+
+    console.print("\n[bold]Please review each privacy gate checklist item:[/bold]\n")
+
+    if yes:
+        c1 = c2 = c3 = c4 = c5 = True
+        console.print("  [green][X] Retained identifiers reviewed[/green]")
+        console.print("  [green][X] Fixtures reviewed[/green]")
+        console.print("  [green][X] Configuration reviewed[/green]")
+        console.print("  [green][X] Environment values absent[/green]")
+        console.print("  [green][X] I approve export[/green]\n")
+    else:
+        c1 = typer.confirm("  [ ] Retained identifiers reviewed?", default=False)
+        c2 = typer.confirm("  [ ] Fixtures reviewed?", default=False)
+        c3 = typer.confirm("  [ ] Configuration reviewed?", default=False)
+        c4 = typer.confirm("  [ ] Environment values absent?", default=False)
+        c5 = typer.confirm("  [ ] I approve export?", default=False)
+
+    checklist = ApprovalChecklist(
+        retained_identifiers_reviewed=c1,
+        fixtures_reviewed=c2,
+        configuration_reviewed=c3,
+        environment_values_absent=c4,
+        export_approved=c5,
+    )
+
+    try:
+        record = gate.conduct_review(approver=reviewer_name, checklist=checklist)
+        console.print(f"\n[bold green][SUCCESS] Export Authorization Approved.[/bold green]")
+        console.print(f"Approver: [cyan]{record.approved_by}[/cyan]")
+        console.print(f"Timestamp: [dim]{record.approved_at}[/dim]")
+        console.print(f"Signature: [yellow]{record.signature[:24]}...[/yellow]")
+        console.print(f"Approval Token: [dim]{gate.approval_file}[/dim]")
+    except PrivacyApprovalError as e:
+        console.print(f"\n[bold red][REJECTED] Privacy review was rejected:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+
+@app.command(name="export")
+def export_command(
+    target: Path = typer.Argument(..., help="Path to workspace directory to export"),
+    output: Path = typer.Option(..., "--output", "-o", help="Target .scopelet output archive"),
+    no_approval: bool = typer.Option(False, "--no-approval", help="Skip approval check (testing only)"),
+) -> None:
+    """
+    Exports a sanitized reproduction capsule into a .scopelet archive after verifying manual review approval.
+    """
+    from scopelet.privacy.gate import CapsuleExporter, PrivacyApprovalError
+
+    target_dir = target.resolve()
+    output_path = output.resolve()
+
+    console.print("[bold blue]Scopelet Capsule Export Engine[/bold blue]")
+    console.print(f"[dim]Source Workspace:[/dim] [yellow]{target_dir}[/yellow]")
+    console.print(f"[dim]Output Archive:[/dim] [green]{output_path}[/green]\n")
+
+    exporter = CapsuleExporter(target_dir)
+
+    try:
+        created = exporter.export(output_file=output_path, require_approval=not no_approval)
+        console.print(f"[bold green][SUCCESS] Capsule successfully exported.[/bold green]")
+        console.print(f"Archive: [cyan]{created}[/cyan] ({created.stat().st_size:,} bytes)")
+    except PrivacyApprovalError as e:
+        console.print(f"[bold red][FAIL] Export Blocked:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+
 if __name__ == "__main__":
     app()
 

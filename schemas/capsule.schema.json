@@ -99,6 +99,11 @@
       },
       "title": "Files",
       "type": "array"
+    },
+    "approval": {
+      "description": "Manual privacy review approval record",
+      "title": "Approval",
+      "type": "object"
     }
   },
   "required": [
