@@ -1,0 +1,174 @@
+{
+  "$defs": {
+    "NormalizedFailure": {
+      "description": "Normalized representation of a test or execution failure.\nLine numbers, timings, memory addresses, and non-deterministic IDs are stripped.",
+      "properties": {
+        "schema_version": {
+          "default": "1.0",
+          "description": "Schema version",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "test": {
+          "description": "Normalized test name or suite name",
+          "title": "Test",
+          "type": "string"
+        },
+        "exception": {
+          "description": "Exception or error type name (e.g. AssertionError)",
+          "title": "Exception",
+          "type": "string"
+        },
+        "message": {
+          "description": "Normalized error message with volatile values stripped",
+          "title": "Message",
+          "type": "string"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Expected value from assertion",
+          "title": "Expected"
+        },
+        "actual": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Actual received value from assertion",
+          "title": "Actual"
+        },
+        "frames": {
+          "description": "List of normalized relative file paths involved in the failure stack",
+          "items": {
+            "type": "string"
+          },
+          "title": "Frames",
+          "type": "array"
+        },
+        "fingerprint": {
+          "default": "",
+          "description": "SHA-256 fingerprint hash of the canonical failure representation",
+          "title": "Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "test",
+        "exception",
+        "message"
+      ],
+      "title": "NormalizedFailure",
+      "type": "object"
+    }
+  },
+  "description": "Metadata recording the execution parameters, runtime versions,\nlockfile state, and allowlisted environment.",
+  "properties": {
+    "schema_version": {
+      "default": "1.0",
+      "description": "Schema version",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "command": {
+      "description": "The command executed",
+      "title": "Command",
+      "type": "string"
+    },
+    "cwd": {
+      "description": "Working directory path",
+      "title": "Cwd",
+      "type": "string"
+    },
+    "exit_code": {
+      "description": "Process exit code",
+      "title": "Exit Code",
+      "type": "integer"
+    },
+    "duration_ms": {
+      "description": "Execution duration in milliseconds",
+      "title": "Duration Ms",
+      "type": "integer"
+    },
+    "runtime": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Captured runtime versions (e.g. node, npm, python)",
+      "title": "Runtime",
+      "type": "object"
+    },
+    "lockfile_hash": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "SHA-256 hash of project lockfile",
+      "title": "Lockfile Hash"
+    },
+    "git_commit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Current Git commit SHA at capture time",
+      "title": "Git Commit"
+    },
+    "timestamp": {
+      "description": "ISO 8601 timestamp in UTC",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "environment": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Allowlisted environment variables (secrets strictly excluded)",
+      "title": "Environment",
+      "type": "object"
+    },
+    "failure": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NormalizedFailure"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Captured normalized failure and fingerprint"
+    }
+  },
+  "required": [
+    "command",
+    "cwd",
+    "exit_code",
+    "duration_ms",
+    "timestamp"
+  ],
+  "title": "SessionInfo",
+  "type": "object"
+}
