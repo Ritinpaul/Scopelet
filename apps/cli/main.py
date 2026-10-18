@@ -709,6 +709,121 @@ def submit_command(
     )
 
 
+def execute_verification(
+    solution: Path,
+    repo: Optional[Path] = None,
+    capsule: Optional[Path] = None,
+    cmd: Optional[str] = None,
+    regression_cmd: Optional[str] = None,
+    output: Optional[Path] = None,
+    timeout: int = 60,
+) -> None:
+    from scopelet.verification import VerificationEngine
+
+    solution_path = solution.resolve()
+    repo_path = (repo or Path.cwd()).resolve()
+
+    console.print("[bold blue]Scopelet Ingestion & Private Verification Engine[/bold blue]")
+    console.print(f"[dim]Candidate Solution:[/dim] [yellow]{solution_path}[/yellow]")
+    console.print(f"[dim]Private Repository:[/dim] [cyan]{repo_path}[/cyan]\n")
+
+    engine = VerificationEngine(repo_dir=repo_path)
+    try:
+        report = engine.verify_solution(
+            solution_target=solution_path,
+            manifest_target=capsule,
+            command=cmd,
+            regression_cmd=regression_cmd,
+            timeout=timeout,
+            output_dir=output,
+        )
+
+        table = Table(title="Private Verification Verdict", show_header=True, header_style="bold cyan")
+        table.add_column("Property", style="dim", width=22)
+        table.add_column("Value", style="bold")
+
+        verdict_color = "green" if report.verdict == "ACCEPTED" else "red"
+        table.add_row("Verdict", f"[{verdict_color}]{report.verdict}[/{verdict_color}]")
+        table.add_row("Patch Hash", f"[cyan]{report.patch_hash[:16]}...[/cyan]")
+        table.add_row("Modified Files", ", ".join(report.modified_files) if report.modified_files else "(None)")
+        table.add_row("Boundary Compliance", "[green]PASS[/green]" if report.compliance_passed else "[red]FAIL[/red]")
+        table.add_row("Target Test", f"[{'green' if report.target_test.passed else 'red'}]{report.target_test.command} (exit {report.target_test.exit_code}, {report.target_test.duration_ms} ms)[/]")
+        if report.regression_test:
+            table.add_row("Regression Suite", f"[{'green' if report.regression_test.passed else 'red'}]{report.regression_test.command} (exit {report.regression_test.exit_code})[/]")
+
+        console.print(table)
+
+        if report.target_test.stdout.strip():
+            console.print(Panel(report.target_test.stdout.strip(), title="Target Test Output", border_style="dim"))
+        if report.target_test.stderr.strip():
+            console.print(Panel(report.target_test.stderr.strip(), title="Target Test Error", border_style="red"))
+
+        if report.rejection_reasons:
+            console.print("\n[bold red]Rejection Reasons:[/bold red]")
+            for r in report.rejection_reasons:
+                console.print(f"  [red]![/red] {r}")
+
+        if report.verdict == "ACCEPTED":
+            console.print("\n[bold green][SUCCESS] Candidate patch successfully verified and accepted into private repository.[/bold green]")
+        else:
+            console.print("\n[bold red][REJECTED] Candidate patch failed private verification.[/bold red]")
+            raise typer.Exit(code=1)
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[bold red][FAIL] Verification execution error:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+
+@app.command(name="verify")
+def verify_command(
+    solution: Path = typer.Argument(..., help="Path to solution.patch, solution directory, or submission zip"),
+    repo: Optional[Path] = typer.Option(None, "--repo", "-r", help="Path to private repository directory"),
+    capsule: Optional[Path] = typer.Option(None, "--capsule", "-c", help="Path to capsule.json or .scopelet archive for validation"),
+    cmd: Optional[str] = typer.Option(None, "--cmd", help="Verification command override for target bug test"),
+    regression_cmd: Optional[str] = typer.Option(None, "--regression-cmd", help="Full regression test command to prevent breakages"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Directory where verification.json should be saved"),
+    timeout: int = typer.Option(60, "--timeout", "-t", help="Execution timeout in seconds"),
+) -> None:
+    """
+    Ingests a candidate solution patch and executes isolated private verification against the repository.
+    """
+    execute_verification(
+        solution=solution,
+        repo=repo,
+        capsule=capsule,
+        cmd=cmd,
+        regression_cmd=regression_cmd,
+        output=output,
+        timeout=timeout,
+    )
+
+
+@capsule_app.command(name="verify")
+def capsule_verify_command(
+    solution: Path = typer.Argument(..., help="Path to solution.patch, solution directory, or submission zip"),
+    repo: Optional[Path] = typer.Option(None, "--repo", "-r", help="Path to private repository directory"),
+    capsule: Optional[Path] = typer.Option(None, "--capsule", "-c", help="Path to capsule.json or .scopelet archive for validation"),
+    cmd: Optional[str] = typer.Option(None, "--cmd", help="Verification command override for target bug test"),
+    regression_cmd: Optional[str] = typer.Option(None, "--regression-cmd", help="Full regression test command to prevent breakages"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Directory where verification.json should be saved"),
+    timeout: int = typer.Option(60, "--timeout", "-t", help="Execution timeout in seconds"),
+) -> None:
+    """
+    Ingests a candidate solution patch and executes isolated private verification against the repository.
+    """
+    execute_verification(
+        solution=solution,
+        repo=repo,
+        capsule=capsule,
+        cmd=cmd,
+        regression_cmd=regression_cmd,
+        output=output,
+        timeout=timeout,
+    )
+
+
 @app.command(name="scan")
 def scan_command(
     target: Path = typer.Argument(..., help="Path to capsule archive or workspace directory to scan"),
