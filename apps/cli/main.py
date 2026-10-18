@@ -1231,7 +1231,7 @@ def create_command(
     import tempfile
     from scopelet.analysis.static.ts_analyzer import TypeScriptAnalyzer
     from scopelet.analysis.dynamic.tracer import DynamicTracer
-    from scopelet.analysis.dynamic.slicer import compute_candidate_slice
+    from scopelet.analysis.dynamic.merger import compute_candidate_slice
     from scopelet.capsule.builder import CapsuleBuilder
     from scopelet.capsule.packager import CapsulePackager
     from scopelet.capture import capture, NoFailureDetectedError
