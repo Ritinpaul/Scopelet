@@ -150,7 +150,13 @@ class PackageConfigCheck(PolicyCheck):
         allowed_changes: Optional[List[str]] = None,
         forbidden_files: Optional[List[str]] = None,
     ) -> PolicyResult:
-        violating = [f for f in files if Path(f).name.lower() in self.CONFIG_FILES]
+        violating = []
+        for f in files:
+            norm = f.replace("\\", "/")
+            if ".." in norm.split("/") or norm.startswith("/") or norm.startswith(".."):
+                violating.append(norm)
+            elif Path(f).name.lower() in self.CONFIG_FILES:
+                violating.append(norm)
         if violating:
             return PolicyResult(
                 policy_name=self.name,
@@ -265,6 +271,7 @@ class ShellExecutionCheck(PolicyCheck):
     EXEC_PATTERNS = [
         re.compile(r"^\+\s*.*(?:\beval\s*\(|\bexec\s*\(|\bnew Function\s*\()", re.MULTILINE),
         re.compile(r"^\+\s*.*(?:\bchild_process\b|\bsubprocess\.|\bos\.system\s*\()", re.MULTILINE),
+        re.compile(r"^\+\s*.*(?:\bprocess\.exit\b|\bsys\.exit\b)", re.MULTILINE),
     ]
 
     @property
@@ -297,7 +304,8 @@ class DependencyVersionCheck(PolicyCheck):
     """
     Rejects dependency additions or version bumps.
     """
-    DEP_RE = re.compile(r"^\+\s*[\"']?[@a-zA-Z0-9_\-\./]+[\"']?\s*:\s*[\"'][\^~]?\d+", re.MULTILINE)
+    DEP_RE = re.compile(r"^\+\s*[\"'][@a-zA-Z0-9_\-\./]+[\"']\s*:\s*[\"'][\^~]?\d+", re.MULTILINE)
+    DEP_PY_RE = re.compile(r"^\+\s*[a-zA-Z0-9_\-\.]+\s*(?:==|>=|<=|~=)\s*\d+", re.MULTILINE)
 
     @property
     def name(self) -> str:
@@ -310,7 +318,7 @@ class DependencyVersionCheck(PolicyCheck):
         allowed_changes: Optional[List[str]] = None,
         forbidden_files: Optional[List[str]] = None,
     ) -> PolicyResult:
-        if self.DEP_RE.search(diff):
+        if self.DEP_RE.search(diff) or self.DEP_PY_RE.search(diff):
             return PolicyResult(
                 policy_name=self.name,
                 passed=False,

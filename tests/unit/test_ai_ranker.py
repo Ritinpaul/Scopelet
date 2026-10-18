@@ -136,14 +136,12 @@ def test_ai_ranker_integration_with_reducer():
     mock_oracle.total_evaluations = 0
     mock_oracle.cache = None
 
-    # Track sequence of files tested for removal
-    tested_sequence = []
+    # Track sequence of states tested
+    tested_evaluations = []
 
     def mock_evaluate(state):
         mock_oracle.total_evaluations += 1
-        removed = set(candidate.active_files) - set(state.active_files)
-        if removed:
-            tested_sequence.append(list(removed)[0])
+        tested_evaluations.append(set(state.active_files))
         return MagicMock(verdict=OracleVerdict.MATCH)
 
     mock_oracle.evaluate.side_effect = mock_evaluate
@@ -156,7 +154,11 @@ def test_ai_ranker_integration_with_reducer():
 
     reduced_state, result = reducer.reduce(candidate)
 
-    # Low relevance file (0.10) must be tested before moderate relevance file (0.30)
-    assert tested_sequence[0] == "remove_me_first.ts"
-    assert tested_sequence[1] == "remove_me_second.ts"
+    # Evaluation 0 is baseline candidate state
+    # Evaluation 1 tests removing lowest relevance file (0.10)
+    # Evaluation 2 tests removing moderate relevance file (0.30)
+    assert len(tested_evaluations) >= 3
+    assert "remove_me_first.ts" not in tested_evaluations[1]
+    assert "remove_me_second.ts" in tested_evaluations[1]
+    assert "remove_me_second.ts" not in tested_evaluations[2]
     assert "keep_me.ts" in reduced_state.active_files

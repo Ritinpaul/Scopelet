@@ -166,6 +166,16 @@ class PrivateHiddenVerifier:
                         f"Hidden regression test suite failed: exit code {reg_verdict.exit_code} on '{reg_cmd}'"
                     )
 
+            # 7b. Execute Full Repository Test Suite
+            full_cmd = full_suite_cmd or self.full_suite_cmd
+            full_verdict: Optional[TestRunVerdict] = None
+            if full_cmd:
+                full_verdict = self._run_command(full_cmd, worktree, timeout=timeout)
+                if not full_verdict.passed:
+                    rejection_reasons.append(
+                        f"Full repository test suite failed: exit code {full_verdict.exit_code} on '{full_cmd}'"
+                    )
+
             # 8. Execute Type Checker (e.g. tsc --noEmit or mypy)
             type_cmd = type_check_cmd or self.type_check_cmd
             type_verdict: Optional[TestRunVerdict] = None
@@ -213,7 +223,7 @@ class PrivateHiddenVerifier:
                 modified_files=app_result.modified_files,
                 target_test=target_res,
                 hidden_regression_test=reg_verdict,
-                full_test_suite=None,
+                full_test_suite=full_verdict,
                 type_check=type_verdict,
                 build_check=build_verdict,
                 lint_check=lint_verdict,
@@ -268,12 +278,15 @@ class PrivateHiddenVerifier:
             if parsed:
                 fingerprint = parsed.fingerprint
 
+        stdout_str = res.stdout if isinstance(res.stdout, str) else str(res.stdout or "")
+        stderr_str = res.stderr if isinstance(res.stderr, str) else str(res.stderr or "")
+
         return TestRunVerdict(
             command=cmd,
             passed=cmd_passed,
             exit_code=res.exit_code,
             duration_ms=duration_ms,
             fingerprint=fingerprint,
-            stdout=res.stdout,
-            stderr=res.stderr,
+            stdout=stdout_str,
+            stderr=stderr_str,
         )

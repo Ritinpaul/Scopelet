@@ -138,6 +138,9 @@ class ConfigurationIntegrityPolicy(BasePolicy):
     ) -> PolicyResult:
         tampered = []
         for f in modified_files:
+            norm = f.replace("\\", "/")
+            if ".." in norm.split("/") or norm.startswith("/") or norm.startswith(".."):
+                tampered.append(f)
             base_name = Path(f).name.lower()
             if base_name in self.FORBIDDEN_FILES:
                 tampered.append(f)
@@ -209,6 +212,7 @@ class CodeExecutionPolicy(BasePolicy):
     EXEC_PATTERNS = [
         re.compile(r"^\+\s*.*(?:\beval\s*\(|\bexec\s*\(|\bnew Function\s*\()", re.MULTILINE),
         re.compile(r"^\+\s*.*(?:\bchild_process\b|\bsubprocess\.|\bos\.system\s*\(|\bos\.popen\s*\()", re.MULTILINE),
+        re.compile(r"^\+\s*.*(?:\bprocess\.exit\b|\bsys\.exit\b)", re.MULTILINE),
     ]
 
     @property
