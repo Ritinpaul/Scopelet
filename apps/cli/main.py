@@ -266,5 +266,149 @@ def analyze_command(
         console.print("[dim]Tip: specify --entry <test.ts> or --cmd <npm test> to compute candidate slice.[/dim]")
 
 
+@app.command(name="reduce")
+def reduce_command(
+    cmd: Optional[str] = typer.Option(None, "--cmd", "-c", help="Test execution command (default: auto-detected or 'npm test')"),
+    cwd: Optional[Path] = typer.Option(None, "--cwd", "-d", help="Working directory path (default: current directory)"),
+    fingerprint: Optional[str] = typer.Option(None, "--fingerprint", "-f", help="Target failure fingerprint (default: auto-detected)"),
+    output_dir: Optional[Path] = typer.Option(None, "--output-dir", "-o", help="Target output directory for reduced reproduction"),
+    max_evals: int = typer.Option(500, "--max-evals", help="Maximum oracle evaluations allowed"),
+    use_slice: bool = typer.Option(True, "--use-slice/--no-slice", help="Pre-filter using static and dynamic candidate slice"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Run without live step reporting"),
+) -> None:
+    """
+    Minimizes repository to smallest reproducible candidate preserving the exact failure fingerprint.
+    """
+    import json
+    import tempfile
+    from scopelet.reducer import (
+        CandidateState,
+        ReducerOracle,
+        ReducerCache,
+        ReducerProgress,
+        DeltaDebuggingReducer,
+    )
+    from scopelet.analysis.static import TypeScriptAnalyzer
+    from scopelet.analysis.dynamic import DynamicTracer, compute_candidate_slice
+
+    target_cwd = (cwd or Path.cwd()).resolve()
+    target_output_dir = output_dir or (target_cwd / ".scopelet" / "reduced")
+
+    detected_cmd = cmd
+    detected_fingerprint = fingerprint
+    stack_frames: list[str] = []
+
+    failure_json = target_cwd / ".scopelet" / "failure.json"
+    session_json = target_cwd / ".scopelet" / "session.json"
+
+    if failure_json.exists():
+        try:
+            f_data = json.loads(failure_json.read_text(encoding="utf-8"))
+            if not detected_fingerprint:
+                detected_fingerprint = f_data.get("fingerprint")
+            stack_frames.extend(f_data.get("frames", []))
+        except Exception:
+            pass
+
+    if not detected_cmd and session_json.exists():
+        try:
+            s_data = json.loads(session_json.read_text(encoding="utf-8"))
+            detected_cmd = s_data.get("command")
+        except Exception:
+            pass
+
+    if not detected_cmd:
+        detected_cmd = "npm test"
+
+    # If no fingerprint provided or cached, capture baseline now
+    if not detected_fingerprint:
+        console.print("[dim]No cached failure found. Running baseline capture...[/dim]")
+        try:
+            cap_result = capture(command=detected_cmd, cwd=target_cwd)
+            detected_fingerprint = cap_result.failure.fingerprint
+            stack_frames.extend(cap_result.failure.frames)
+        except Exception as e:
+            console.print(f"[bold red][FAIL] Unable to capture baseline failure:[/bold red] {e}")
+            raise typer.Exit(code=1)
+
+    console.print(f"[bold blue]Scopelet Behavior-Preserving Reducer[/bold blue]")
+    console.print(f"[dim]Repository:[/dim] [yellow]{target_cwd}[/yellow]")
+    console.print(f"[dim]Command:[/dim] [cyan]{detected_cmd}[/cyan]")
+    console.print(f"[dim]Target Fingerprint:[/dim] [bold cyan]{detected_fingerprint}[/bold cyan]\n")
+
+    initial_state = CandidateState.from_directory(target_cwd)
+
+    # Optional candidate slice pre-filtering
+    candidate_slice_files = None
+    if use_slice:
+        try:
+            analyzer = TypeScriptAnalyzer()
+            graph = analyzer.build_graph(target_cwd)
+            tracer = DynamicTracer()
+            report = tracer.trace(detected_cmd, target_cwd)
+            slice_result = compute_candidate_slice(
+                static_graph=graph,
+                dynamic_trace=report.trace,
+                stack_frames=stack_frames,
+                all_files=set(graph.nodes.keys()),
+            )
+            candidate_slice_files = set(slice_result.combined_slice)
+        except Exception as e:
+            console.print(f"[dim yellow]Warning: Candidate slice computation skipped: {e}[/dim yellow]")
+
+    # Create isolated workspace directory for candidate evaluations
+    temp_workspace = Path(tempfile.mkdtemp(prefix="scopelet_reducer_"))
+    cache_path = target_cwd / ".scopelet" / "reducer_cache.db"
+    cache = ReducerCache(cache_path)
+
+    oracle = ReducerOracle(
+        command=detected_cmd,
+        expected_fingerprint=detected_fingerprint,
+        workspace_dir=temp_workspace,
+        cache=cache,
+    )
+
+    progress = ReducerProgress(console=console, quiet=quiet)
+    protected = set(stack_frames)
+
+    reducer = DeltaDebuggingReducer(
+        oracle=oracle,
+        progress=progress,
+        protected_files=protected,
+        max_evaluations=max_evals,
+    )
+
+    try:
+        final_state, summary = reducer.reduce(
+            initial_state=initial_state,
+            candidate_slice_files=candidate_slice_files,
+        )
+
+        # Materialize final minimal reproduction to output directory
+        target_output_dir.mkdir(parents=True, exist_ok=True)
+        final_state.materialize(target_output_dir, link_node_modules=True)
+
+        progress.print_summary(
+            initial_files=summary.initial_files,
+            final_files=summary.final_files,
+            initial_loc=summary.initial_loc,
+            final_loc=summary.final_loc,
+            evaluations=summary.total_evaluations,
+            cache_hits=summary.cache_hits,
+            output_dir=str(target_output_dir),
+        )
+    except Exception as e:
+        console.print(f"[bold red][FAIL] Reduction failed:[/bold red] {e}")
+        raise typer.Exit(code=1)
+    finally:
+        # Cleanup temporary workspace files (junction/symlink removed safely)
+        try:
+            import shutil
+            shutil.rmtree(temp_workspace, ignore_errors=True)
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
     app()
+

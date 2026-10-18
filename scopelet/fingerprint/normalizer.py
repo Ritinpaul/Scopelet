@@ -41,7 +41,7 @@ INLINE_EXPECTED_RE = re.compile(
 # at Object.<anonymous> (src/invoice/service.ts:44:21)
 # at src/invoice/service.ts:44:21
 STACK_FRAME_PATTERNS = [
-    re.compile(r"[❯\s]+(?:at\s+(?:.+?\s+\()?|[>❯]\s+)?([a-zA-Z0-9_\-\.\/\\:]+?\.[jt]sx?)(?::(\d+)(?::(\d+))?)?\)?"),
+    re.compile(r"(?:^\s*at\s+(?:.+?\s+\()?|[>❯]\s+)([a-zA-Z0-9_\-\.\/\\:]+?\.[jt]sx?)(?::(\d+)(?::(\d+))?)?\)?"),
 ]
 
 # Patterns for volatile values to strip: UUIDs, timings, hex memory addresses
